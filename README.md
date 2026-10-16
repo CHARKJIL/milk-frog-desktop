@@ -59,3 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\windows\src\build.ps1
 详见 [验证记录](docs/verification.md)。四个主要观察方向通过独立复核；337.5° 接近正上方，其左向分量较弱。
 
 桌宠交互参考：[cccc433/desktop-pet](https://github.com/cccc433/desktop-pet)。Windows 程序的 C# 源码为本项目单独编写，未复制该参考项目的实现。
+
+## 开源许可
+
+原创程序代码、构建脚本、预览页面代码和项目文档采用 [MIT 许可证](LICENSE)。角色形象和美术素材的授权范围见 [素材说明](ASSETS.md)。

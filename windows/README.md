@@ -13,3 +13,5 @@
 位置和大小保存在运行时生成的 `settings.txt` 中。运行条件为 64 位 Windows 与 .NET Framework/WPF。
 
 源代码在 `src` 文件夹；在 PowerShell 中运行 `src\build.ps1` 可重新编译。
+
+程序代码使用 MIT 许可证，见 `LICENSE`；角色图片和图标的授权范围见 `ASSETS.md`。
