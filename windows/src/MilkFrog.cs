@@ -11,10 +11,50 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 
 namespace MilkFrogDesktop
 {
+    // 只管理当前 Windows 用户的一个启动项；启动程序本身不会自动写入注册表。
+    public static class StartupRegistration
+    {
+        public const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        public const string ValueName = "MilkFrogDesktop";
+        public static string Command
+        {
+            get { return "\"" + System.Reflection.Assembly.GetExecutingAssembly().Location + "\""; }
+        }
+        public static bool IsEnabled()
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKeyPath))
+            {
+                string saved = key == null ? null : key.GetValue(ValueName) as string;
+                return string.Equals(saved, Command, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        public static void SetEnabled(bool enabled)
+        {
+            if (enabled)
+            {
+                string command = Command;
+                if (command.Length > 260) throw new InvalidOperationException("程序所在路径太长，请移到较短的文件夹后重试。");
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+                {
+                    if (key == null) throw new IOException("无法打开当前用户的启动项设置。");
+                    key.SetValue(ValueName, command, RegistryValueKind.String);
+                }
+            }
+            else
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
+                {
+                    if (key != null) key.DeleteValue(ValueName, false);
+                }
+            }
+        }
+    }
+
     public class PetWindow : Window
     {
         // 每行对应一种动作，每张小图为 192 × 208 像素。
@@ -30,6 +70,8 @@ namespace MilkFrogDesktop
         readonly string folder = AppDomain.CurrentDomain.BaseDirectory;
         readonly Forms.NotifyIcon tray = new Forms.NotifyIcon();
         ContextMenu menu;
+        MenuItem startupMenu;
+        Forms.ToolStripMenuItem trayStartupMenu;
         int row, frame, ticks, animationMs;
         int actionMs, nextActionMs = 8000, speechMs;
         bool roaming = true, resting, paused, pointerDown, dragging, noSave;
@@ -92,9 +134,15 @@ namespace MilkFrogDesktop
             Forms.ContextMenuStrip trayMenu = new Forms.ContextMenuStrip();
             trayMenu.Items.Add("显示奶蛙", null, delegate { Dispatcher.Invoke(new Action(Wake)); });
             trayMenu.Items.Add("隐藏奶蛙", null, delegate { Dispatcher.Invoke(new Action(delegate { Hide(); })); });
+            trayStartupMenu = new Forms.ToolStripMenuItem("开机自启动");
+            trayStartupMenu.CheckOnClick = true;
+            trayStartupMenu.Click += delegate { Dispatcher.Invoke(new Action(delegate { SetStartupEnabled(trayStartupMenu.Checked); })); };
+            trayMenu.Items.Add(trayStartupMenu);
+            trayMenu.Opening += delegate { RefreshStartupMenu(); };
             trayMenu.Items.Add("退出", null, delegate { Dispatcher.Invoke(new Action(Close)); });
             tray.ContextMenuStrip = trayMenu; tray.DoubleClick += delegate { Dispatcher.Invoke(new Action(Wake)); };
             tray.Visible = true;
+            RefreshStartupMenu();
         }
 
         void LoadSprites()
@@ -256,12 +304,40 @@ namespace MilkFrogDesktop
             MenuItem rest = Item("安静休息", delegate { resting = !resting; walkSpeed = 0; SetState(resting ? 6 : 0, 0); Say(resting ? "我安静待一会儿。" : "休息好了。", 2400); });
             rest.IsCheckable = true; menu.Items.Add(rest);
             MenuItem freeze = Item("暂停动画", delegate { paused = !paused; }); freeze.IsCheckable = true; menu.Items.Add(freeze);
+            startupMenu = new MenuItem(); startupMenu.Header = "开机自启动"; startupMenu.IsCheckable = true;
+            startupMenu.Click += delegate { SetStartupEnabled(startupMenu.IsChecked); };
+            menu.Items.Add(startupMenu);
+            menu.Opened += delegate { RefreshStartupMenu(); };
             menu.Items.Add(new Separator());
             menu.Items.Add(Item("变大一点", delegate { ResizePet(1.15); }));
             menu.Items.Add(Item("变小一点", delegate { ResizePet(1.0 / 1.15); }));
             menu.Items.Add(Item("回到屏幕右下角", delegate { Rect a = WorkArea(); Left = a.Right - Width - 30; Top = a.Bottom - Height; SaveSettings(); }));
             menu.Items.Add(Item("隐藏到托盘", Hide));
             menu.Items.Add(Item("退出奶蛙", Close));
+        }
+        void RefreshStartupMenu()
+        {
+            bool enabled = false, available = true;
+            try { enabled = StartupRegistration.IsEnabled(); }
+            catch (System.Security.SecurityException) { available = false; }
+            catch (UnauthorizedAccessException) { available = false; }
+            catch (IOException) { available = false; }
+            if (startupMenu != null) { startupMenu.IsChecked = enabled; startupMenu.IsEnabled = available; }
+            if (trayStartupMenu != null) { trayStartupMenu.Checked = enabled; trayStartupMenu.Enabled = available; }
+        }
+        void SetStartupEnabled(bool enabled)
+        {
+            try
+            {
+                StartupRegistration.SetEnabled(enabled);
+                RefreshStartupMenu();
+                Say(enabled ? "下次登录电脑，我会来陪你。" : "开机自启动已关闭。", 3600);
+            }
+            catch (Exception error)
+            {
+                RefreshStartupMenu();
+                MessageBox.Show("开机自启动设置没有保存成功。\n" + error.Message, "奶蛙", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         IntPtr WindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
