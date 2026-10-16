@@ -1,0 +1,12 @@
+* text=auto eol=lf
+*.cs text
+*.ps1 text
+*.md text
+*.html text
+*.json text
+*.png binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.exe binary
+*.zip binary
